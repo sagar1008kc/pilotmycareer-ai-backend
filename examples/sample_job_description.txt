@@ -1,0 +1,25 @@
+Staff Backend Engineer - Platform
+
+We are hiring a Staff Backend Engineer to lead the design of our next-generation API
+platform. You will own architecture decisions, mentor engineers, and drive reliability
+at scale.
+
+Responsibilities
+- Architect and build high-throughput backend services in Python.
+- Lead adoption of event-driven and microservice patterns.
+- Own observability, performance, and reliability (SLOs, latency budgets).
+- Drive CI/CD and infrastructure-as-code practices.
+- Mentor and grow a team of backend engineers.
+
+Required Qualifications
+- 6+ years backend engineering experience.
+- Expert in Python and modern async frameworks (FastAPI or similar).
+- Strong experience with PostgreSQL and Redis.
+- Hands-on with Docker and Kubernetes in production.
+- Deep understanding of distributed systems and message queues (Kafka or similar).
+- Experience with cloud platforms (AWS, GCP, or Azure).
+
+Nice to Have
+- Experience with Terraform or other IaC tooling.
+- Background in data pipelines and streaming systems.
+- GraphQL API design experience.

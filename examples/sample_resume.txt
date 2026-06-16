@@ -1,0 +1,27 @@
+Jordan Avery
+Senior Backend Engineer
+jordan.avery@example.com | San Francisco, CA | linkedin.com/in/jordanavery
+
+SUMMARY
+Backend engineer with 7 years building scalable APIs and data pipelines. Specialized in
+Python, distributed systems, and cloud infrastructure. Led teams delivering high-throughput
+services handling millions of requests per day.
+
+EXPERIENCE
+Senior Backend Engineer, Northwind Cloud (2021 - Present)
+- Designed and shipped a FastAPI-based microservice platform serving 4M requests/day.
+- Cut p99 latency 38% by introducing Redis caching and async I/O with asyncio.
+- Built CI/CD with Docker and GitHub Actions; reduced deploy time from 25 to 6 minutes.
+- Mentored 4 engineers and led the migration from REST to event-driven architecture.
+
+Backend Engineer, Lumen Data (2018 - 2021)
+- Built ETL pipelines in Python and PostgreSQL processing 2TB/day.
+- Implemented JWT-based auth and role-based access control across 12 services.
+- Introduced automated testing with pytest, raising coverage from 40% to 85%.
+
+SKILLS
+Python, FastAPI, PostgreSQL, Redis, Docker, Kubernetes, AWS, REST APIs, asyncio,
+CI/CD, pytest, distributed systems, microservices
+
+EDUCATION
+B.S. Computer Science, University of California
