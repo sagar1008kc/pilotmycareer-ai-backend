@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 from fastapi import APIRouter, Depends, Request
 
 from app.agents import resume_matcher_agent, resume_optimizer_agent
@@ -26,7 +28,11 @@ async def resume_match(
     user: AuthUser = Depends(get_current_user),
 ) -> ResumeMatchResponse:
     timer = start_timer(request)
-    result = resume_matcher_agent.run(payload.resume_text, payload.job_description)
+    result = await asyncio.to_thread(
+        resume_matcher_agent.run,
+        payload.resume_text,
+        payload.job_description,
+    )
     finalize(result, timer, user.user_id)
     report_service.save_report(
         user.user_id,

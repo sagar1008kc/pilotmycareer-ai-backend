@@ -1,76 +1,132 @@
-"""Resume + JD Matcher agent.
+"""Evidence-based Resume Analyzer agent.
 
-Deterministic scoring (no LLM) produces the score and skill lists. The LLM only writes the
-narrative explanation, recommended edits, and interview questions, with deterministic
-fallbacks when the LLM is unavailable.
+Deterministic analysis owns cleaning, validation, evidence scoring, and score caps. The LLM
+only refines resume edits and optimized text, with deterministic fallbacks when unavailable.
 """
 
 from __future__ import annotations
 
 from app.models.resume_models import ResumeMatchResponse
-from app.services import llm_service, prompt_service, scoring_service
+from app.services import llm_service, prompt_service, resume_analysis_service
 
 AGENT_NAME = "resume_match"
 
 
-def _fallback_edits(missing: list[str], matched: list[str]) -> dict:
-    edits: list[str] = []
-    if missing:
-        edits.append(
-            "Add concrete experience or keywords for: " + ", ".join(missing[:6]) + "."
+def _fallback_rewrite_suggestions(analysis: dict) -> list[dict[str, str]]:
+    missing_requirements = list(analysis.get("missing_requirements", []))
+    suggestions: list[dict[str, str]] = []
+    for item in missing_requirements[:3]:
+        requirement = str(item.get("requirement", "the missing requirement"))
+        suggestions.append(
+            {
+                "section": "experience",
+                "current_issue": f"No clear evidence for: {requirement}",
+                "improved_bullet": (
+                    "Add a truthful bullet such as: "
+                    '"Used [tool] to [process/responsibility] with [team], improving [metric/outcome]."'
+                ),
+                "reason": "This gives the analyzer concrete action, tool, scope, and outcome evidence.",
+            }
         )
-    if matched:
-        edits.append(
-            "Quantify impact for your strengths (" + ", ".join(matched[:4]) + ") with metrics."
+    if not suggestions:
+        suggestions.append(
+            {
+                "section": "experience",
+                "current_issue": "Bullets can be more evidence-rich.",
+                "improved_bullet": (
+                    "Rewrite a relevant bullet as: "
+                    '"Built [project/system] using [tool] to solve [problem], resulting in [metric/outcome]."'
+                ),
+                "reason": "Specific examples carry more weight than keyword mentions.",
+            }
         )
-    edits.append("Mirror the job description's terminology to improve ATS matching.")
-    edits.append("Lead each bullet with an action verb and a measurable result.")
+    return suggestions
 
-    questions = [
-        "Walk me through a project where you used "
-        + (matched[0] if matched else "your core skills")
-        + ".",
-        "How would you ramp up on "
-        + (missing[0] if missing else "a technology new to you")
-        + "?",
-        "Describe a time you improved a system's performance or reliability.",
-        "Tell me about a challenging stakeholder situation and how you handled it.",
+
+def _fallback_optimized_resume(analysis: dict) -> str:
+    sections = dict(analysis.get("resume_sections", {}))
+    parts = [
+        "SUMMARY",
+        sections.get("summary")
+        or "Candidate summary: add a concise target-role summary grounded in your real experience.",
+        "",
+        "SKILLS",
+        sections.get("skills")
+        or "Add truthful tools, languages, platforms, and methods you have used.",
+        "",
+        "EXPERIENCE",
+        sections.get("experience")
+        or "- Add bullets with action + [tool] + [responsibility] + [metric/outcome].",
     ]
-    return {"recommended_edits": edits, "interview_questions": questions}
+    if sections.get("projects"):
+        parts.extend(["", "PROJECTS", sections["projects"]])
+    if sections.get("education"):
+        parts.extend(["", "EDUCATION", sections["education"]])
+    return "\n".join(parts).strip()
+
+
+def _fallback_payload(analysis: dict) -> dict:
+    return {
+        "summary": analysis.get("summary", ""),
+        "top_resume_fixes": list(analysis.get("top_resume_fixes", [])),
+        "matched_evidence": list(analysis.get("matched_evidence", [])),
+        "missing_requirements": list(analysis.get("missing_requirements", [])),
+        "resume_rewrite_suggestions": _fallback_rewrite_suggestions(analysis),
+        "optimized_resume_text": _fallback_optimized_resume(analysis),
+    }
+
+
+def _as_list(value: object) -> list:
+    return value if isinstance(value, list) else []
 
 
 def run(resume_text: str, job_description: str) -> ResumeMatchResponse:
-    match = scoring_service.match_resume_to_job(resume_text, job_description)
-
-    fallback_extra = _fallback_edits(match.missing_skills, match.matched_skills)
-    coverage_word = (
-        "strong" if match.score >= 70 else "moderate" if match.score >= 45 else "limited"
-    )
-    fallback = {
-        "recommended_edits": fallback_extra["recommended_edits"],
-        "interview_questions": fallback_extra["interview_questions"],
-        "explanation": (
-            f"The resume shows {coverage_word} alignment with the role "
-            f"({match.score}/100). Matched skills: "
-            f"{', '.join(match.matched_skills) or 'none detected'}. "
-            f"Key gaps: {', '.join(match.missing_skills) or 'none detected'}."
-        ),
-    }
+    analysis = resume_analysis_service.evidence_score(resume_text, job_description)
+    fallback = _fallback_payload(analysis)
 
     system, user = prompt_service.resume_match_prompt(
-        resume_text, job_description, match.score, match.matched_skills, match.missing_skills
+        cleaned_resume_text=str(analysis.get("cleaned_resume_text", "")),
+        cleaned_job_description=str(analysis.get("cleaned_job_description", "")),
+        deterministic_score=int(analysis.get("overall_score", 0)),
+        score_breakdown=dict(analysis.get("score_breakdown", {})),
+        input_quality=dict(analysis.get("input_quality", {})),
+        extracted_job_requirements=dict(analysis.get("job_requirements", {})),
+        extracted_resume_sections=dict(analysis.get("resume_sections", {})),
+        matched_evidence=list(analysis.get("matched_evidence", [])),
+        missing_requirements=list(analysis.get("missing_requirements", [])),
     )
-    data, result = llm_service.generate_json(system, user, fallback=fallback)
+    data, result = llm_service.generate_json(system, user, fallback=fallback, timeout_seconds=20.0)
+
+    top_resume_fixes = _as_list(data.get("top_resume_fixes")) or fallback["top_resume_fixes"]
+    matched_evidence = _as_list(data.get("matched_evidence")) or fallback["matched_evidence"]
+    missing_requirements = _as_list(data.get("missing_requirements")) or fallback["missing_requirements"]
+    rewrite_suggestions = (
+        _as_list(data.get("resume_rewrite_suggestions"))
+        or fallback["resume_rewrite_suggestions"]
+    )
+    optimized_resume_text = str(
+        data.get("optimized_resume_text") or fallback["optimized_resume_text"]
+    )
+    summary = str(data.get("summary") or fallback["summary"])
 
     return ResumeMatchResponse(
         agent=AGENT_NAME,
         provider=result.provider,
         model=result.model,
         usage=result.usage,
-        score=match.score,
-        matched_skills=match.matched_skills,
-        missing_skills=match.missing_skills,
-        recommended_edits=list(data.get("recommended_edits", [])),
-        interview_questions=list(data.get("interview_questions", [])),
-        explanation=str(data.get("explanation", "")),
+        input_quality=dict(analysis.get("input_quality", {})),
+        overall_score=int(analysis.get("overall_score", 0)),
+        score_label=str(analysis.get("score_label", "Weak match")),
+        score_breakdown=dict(analysis.get("score_breakdown", {})),
+        summary=summary,
+        top_resume_fixes=top_resume_fixes,
+        matched_evidence=matched_evidence,
+        missing_requirements=missing_requirements,
+        resume_rewrite_suggestions=rewrite_suggestions,
+        optimized_resume_text=optimized_resume_text,
+        score=int(analysis.get("overall_score", 0)),
+        matched_skills=list(analysis.get("matched_skills", [])),
+        missing_skills=list(analysis.get("missing_skills", [])),
+        recommended_edits=top_resume_fixes,
+        explanation=summary,
     )

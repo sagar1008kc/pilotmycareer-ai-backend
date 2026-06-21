@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import json
+from typing import Any
+
 MAX_CHARS = 14000
 
 
@@ -9,21 +12,71 @@ def _clip(text: str, limit: int = MAX_CHARS) -> str:
     return text[:limit]
 
 
-def resume_match_prompt(resume_text: str, job_description: str, score: int,
-                        matched: list[str], missing: list[str]) -> tuple[str, str]:
+def resume_match_prompt(
+    *,
+    cleaned_resume_text: str,
+    cleaned_job_description: str,
+    deterministic_score: int,
+    score_breakdown: dict[str, int],
+    input_quality: dict[str, Any],
+    extracted_job_requirements: dict[str, list[str]],
+    extracted_resume_sections: dict[str, str],
+    matched_evidence: list[dict[str, str]],
+    missing_requirements: list[dict[str, str]],
+) -> tuple[str, str]:
     system = (
-        "You are an ATS-aware career coach. A deterministic engine already computed the match "
-        "score and skill lists. Use them as ground truth. Return JSON only with keys: "
-        '"recommended_edits" (string[]), "interview_questions" (string[]), '
-        '"explanation" (string). Do not restate the score.'
+        "You are an expert ATS-aware resume analyzer. You compare a candidate resume against "
+        "a job description using evidence, not keyword stuffing. You must not invent experience. "
+        "You must return valid JSON only."
     )
-    user = (
-        f"Match score: {score}\n"
-        f"Matched skills: {', '.join(matched) or 'none'}\n"
-        f"Missing skills: {', '.join(missing) or 'none'}\n\n"
-        f"RESUME:\n{_clip(resume_text)}\n\n"
-        f"JOB DESCRIPTION:\n{_clip(job_description)}"
-    )
+    payload = {
+        "cleaned_resume_text": _clip(cleaned_resume_text),
+        "cleaned_job_description": _clip(cleaned_job_description),
+        "deterministic_score": deterministic_score,
+        "score_breakdown": score_breakdown,
+        "input_quality": input_quality,
+        "extracted_job_requirements": extracted_job_requirements,
+        "extracted_resume_sections": extracted_resume_sections,
+        "matched_evidence": matched_evidence,
+        "missing_requirements": missing_requirements,
+        "required_output_shape": {
+            "summary": "string",
+            "top_resume_fixes": ["string"],
+            "matched_evidence": [
+                {
+                    "jd_requirement": "string",
+                    "resume_evidence": "string",
+                    "confidence": "high | medium | low",
+                }
+            ],
+            "missing_requirements": [
+                {
+                    "requirement": "string",
+                    "importance": "required | preferred",
+                    "reason": "string",
+                    "suggested_resume_line": "string",
+                }
+            ],
+            "resume_rewrite_suggestions": [
+                {
+                    "section": "summary | skills | experience | projects | education",
+                    "current_issue": "string",
+                    "improved_bullet": "string",
+                    "reason": "string",
+                }
+            ],
+            "optimized_resume_text": "string",
+        },
+        "rules": [
+            "Do not change or override deterministic_score or score_breakdown.",
+            "If experience is missing, write template bullets with placeholders like [tool], [metric], [process], [team], [outcome].",
+            "Do not fabricate specific numbers, employers, certifications, tools, years, or outcomes.",
+            "Do not copy job-description sentences directly into the resume.",
+            "Keep optimized_resume_text ATS-friendly, clean, and professional.",
+            "Suggestions must be actionable inside a resume editor.",
+        ],
+    }
+    user = json.dumps(payload, ensure_ascii=True)
     return system, user
 
 

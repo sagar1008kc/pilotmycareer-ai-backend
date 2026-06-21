@@ -39,7 +39,14 @@ class LLMProvider:
     def is_mock(self) -> bool:
         return False
 
-    def complete(self, system: str, user: str, *, json_mode: bool = False) -> LLMResult:
+    def complete(
+        self,
+        system: str,
+        user: str,
+        *,
+        json_mode: bool = False,
+        timeout_seconds: float | None = None,
+    ) -> LLMResult:
         raise NotImplementedError
 
 
@@ -50,7 +57,14 @@ class MockProvider(LLMProvider):
     def is_mock(self) -> bool:
         return True
 
-    def complete(self, system: str, user: str, *, json_mode: bool = False) -> LLMResult:
+    def complete(
+        self,
+        system: str,
+        user: str,
+        *,
+        json_mode: bool = False,
+        timeout_seconds: float | None = None,
+    ) -> LLMResult:
         # The caller supplies deterministic fallbacks; mock text is informational only.
         return LLMResult(
             text="[mock] LLM disabled (no OPENAI_API_KEY). Returning deterministic output.",
@@ -68,7 +82,14 @@ class OpenAIProvider(LLMProvider):
         self._client = OpenAI(api_key=settings.openai_api_key)
         self._model = settings.openai_model
 
-    def complete(self, system: str, user: str, *, json_mode: bool = False) -> LLMResult:
+    def complete(
+        self,
+        system: str,
+        user: str,
+        *,
+        json_mode: bool = False,
+        timeout_seconds: float | None = None,
+    ) -> LLMResult:
         kwargs: dict[str, Any] = {
             "model": self._model,
             "messages": [
@@ -79,6 +100,8 @@ class OpenAIProvider(LLMProvider):
         }
         if json_mode:
             kwargs["response_format"] = {"type": "json_object"}
+        if timeout_seconds is not None:
+            kwargs["timeout"] = timeout_seconds
 
         resp = self._client.chat.completions.create(**kwargs)
         text = resp.choices[0].message.content or ""
@@ -98,7 +121,14 @@ class _NotImplementedProvider(LLMProvider):
     def __init__(self, name: str) -> None:
         self.name = name
 
-    def complete(self, system: str, user: str, *, json_mode: bool = False) -> LLMResult:
+    def complete(
+        self,
+        system: str,
+        user: str,
+        *,
+        json_mode: bool = False,
+        timeout_seconds: float | None = None,
+    ) -> LLMResult:
         raise NotImplementedError(f"Provider '{self.name}' is not implemented yet")
 
 
@@ -145,6 +175,7 @@ def generate_json(
     user: str,
     *,
     fallback: dict[str, Any],
+    timeout_seconds: float | None = 20.0,
 ) -> tuple[dict[str, Any], LLMResult]:
     """Generate structured JSON, returning ``fallback`` when the LLM is unavailable.
 
@@ -153,10 +184,15 @@ def generate_json(
     """
     provider = get_provider()
     if provider.is_mock:
-        return dict(fallback), provider.complete(system, user)
+        return dict(fallback), provider.complete(system, user, timeout_seconds=timeout_seconds)
 
     try:
-        result = provider.complete(system, user, json_mode=True)
+        result = provider.complete(
+            system,
+            user,
+            json_mode=True,
+            timeout_seconds=timeout_seconds,
+        )
     except Exception:
         logger.exception("LLM call failed; using fallback", extra={"provider": provider.name})
         return dict(fallback), LLMResult(text="", provider=provider.name, model="error")
