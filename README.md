@@ -60,6 +60,29 @@ Run with Docker:
 docker compose up --build
 ```
 
+## Deploy on Render
+
+Render defaults to newer Python runtimes that may fail to build pinned dependencies such as
+`pydantic-core`. Pin the service to **Python 3.11** via the root `.python-version` file
+(`3.11.11`).
+
+In the Render web service settings, use:
+
+**Build command:**
+
+```bash
+pip install --upgrade pip setuptools wheel && pip install -r requirements.txt
+```
+
+**Start command:**
+
+```bash
+uvicorn app.main:app --host 0.0.0.0 --port $PORT
+```
+
+Configure the required environment variables from `.env.example` in the Render dashboard. Do
+not commit secrets to the repository.
+
 ## Auth modes
 
 - `AUTH_MODE=dev` — returns a fixed mock user; no token required. Use for local development.
