@@ -45,8 +45,8 @@ uvicorn app.main:app --reload --port 8000
 
 Then visit:
 
-- Health: http://localhost:8000/api/v1/health
-- Docs:   http://localhost:8000/docs
+- Health: https://pilotmycareer-ai-backend.onrender.com/api/v1/health
+- Docs:   https://pilotmycareer-ai-backend.onrender.com/docs
 
 Run tests:
 
